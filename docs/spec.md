@@ -1,6 +1,6 @@
 # elf2exe3: WarpOS ELF to Amiga Hunk conversion spec
 
-Status: draft 12 (2026-10-17). Companion notes: the Elf2Exe2 review in the project files.
+Status: draft 13 (2026-10-17). Companion notes: the Elf2Exe2 review in the project files.
 
 ## 1. Goal
 
@@ -85,7 +85,7 @@ Default layout ("merged"), in this hunk order:
 |---|---|---|---|
 | 0 | `HUNK_CODE` (0x3E9) | 68k startup object, linked in (section 8) | any |
 | 1 | `HUNK_CODE` (0x3E9) | Every `SHF_EXECINSTR` section (PPC or 68k), the section holding the entry point first, in file order (`.text`, `.init`, `.fini`, …) | `HUNKF_FAST` |
-| 2 | `HUNK_DATA` (0x3EA) | The page table (6.2) first, then every `SHF_ALLOC` `SHT_PROGBITS` non-exec section in file order (`.rodata`, `.gcc_except_table`, `.ctors`, `.dtors`, `.data`, `.sdata`, …) | `HUNKF_FAST` |
+| 2 | `HUNK_DATA` (0x3EA) | Every `SHF_ALLOC` `SHT_PROGBITS` non-exec section in file order (`.rodata`, `.gcc_except_table`, `.ctors`, `.dtors`, `.data`, `.sdata`, …), then the page table (6.2) | `HUNKF_FAST` |
 | 3 | `HUNK_BSS` (0x3EB) | Every `SHT_NOBITS` alloc section (`.sbss`, `.bss`), then COMMON symbols | `HUNKF_FAST` |
 
 Rules:
@@ -154,7 +154,7 @@ r_offset`) and `T = (thunk, toff)` the target from section 5.
 | ELF type | Action |
 |---|---|
 | `R_PPC_NONE` (0) | ignore |
-| `R_PPC_ADDR32` (1), `R_PPC_UADDR32` (24) | Write `toff` as a 32-bit big-endian word at `P`; add `poff` to the `HUNK_RELOC32` list of `phunk` for target `thunk`. If `T` is absolute, write the value and emit no reloc. `poff` must be even (`HUNK_RELOC32` limit); odd is an error. |
+| `R_PPC_ADDR32` (1), `R_PPC_UADDR32` (24) | Write `toff` as a 32-bit big-endian word at `P`; add `poff` to the `HUNK_RELOC32` list of `phunk` for target `thunk`. If `T` is absolute, write the value and emit no reloc. `poff` may be odd: the sample has 894 of them, because its `.eh_frame` data is linked into `.text` and holds unaligned pointers. `LoadSeg` handles odd offsets on a 68020 or later, which every PPC Amiga has. |
 | `R_PPC_REL24` (10), `R_PPC_PLTREL24` (18), `R_PPC_LOCAL24PC` (23) | Same hunk: `d = toff - poff`, check `-2^25 <= d < 2^25` and `d % 4 == 0`, write `(insn & 0xFC000003) \| (d & 0x03FFFFFC)`. Different hunk (only possible with `--split`): error. Target absolute (`SHN_ABS`): error, as in Elf2Exe2 ("REL24 to absolute symbol"). |
 | `R_PPC_REL14` (11) and `_BRTAKEN/_BRNTAKEN` (12, 13) | Same hunk only: 16-bit signed range, write into bits 2..15 keeping bits 0,1 and 16..31 (keep the existing `BO` hint bit for the plain type). Cross hunk: error. |
 | `R_PPC_REL32` (26) | Same hunk: write `toff - poff`. Cross hunk: error. |
@@ -179,7 +179,7 @@ define its page `pg = (toff + 0x8000) >> 16` (the HA value relative to the
 hunk start). Each distinct `(thunk, pg)` gets one 32-bit slot holding
 `pg << 16`, with a `HUNK_RELOC32` entry against `thunk`. After loading, the
 slot therefore holds `hunkaddr[thunk] + (pg << 16)`. The table sits at the
-start of hunk 2. The sample needs 374 slots (1.5 KB).
+end of hunk 2, 4-byte aligned. The sample needs 353 slots with hooks (374 without), about 1.4 KB.
 
 **Base register.** `r2` points 0x8000 bytes past the table start (so a signed
 16-bit displacement reaches 16,384 slots). More slots than that is an error.
@@ -268,13 +268,24 @@ that already has `r2`. For each such function the converter:
 2. Makes every pointer reloc that targets `f` point at `hook_f` instead.
    Direct `bl f` calls are left alone, so they skip the hook.
 
-The sample has 27,562 address-taken functions out of 58,138. That is about
+The sample has 27,522 address-taken functions out of 58,140. That is about
 1 MB of trampolines, and roughly 6 extra instructions on each call through a
 pointer (C++ virtual calls, callbacks). 697 of these functions start with a
 `b` (re-encoded in the trampoline) and 946 with a `blr`/`bctr` (copied as
 is). Reloc targets in the middle of a function (3,562, mostly jump tables)
 are not hooked: they are reached from inside a function that already set
 `r2`.
+
+Not hooked:
+
+- a "function" whose first word carries an `ADDR32` reloc. It is a table
+  typed as `STT_FUNC`, such as `__initlist` in `.init` and `__exitlist` in
+  `.fini` in the sample (pairs of pointer and priority, read as data).
+- targets of relocs from `.gcc_except_table`, `.eh_frame*`, `.stab*` and
+  `.debug*`: exception and debug tables, not calls through a pointer.
+
+A function that starts with a relative `bc` the trampoline cannot reach is an
+error; a relative `b` or `bl` is re-encoded, any other instruction is copied.
 
 `--no-hooks` skips this for programs that are known not to start tasks or
 take callbacks. If hooks ever prove unworkable, the fallback is the run-time
@@ -386,7 +397,7 @@ and no extra work is needed for the main task.
 What the converter must do to link it (a small hunk-object linker):
 
 1. Read the object's hunks. Put its 68k code in hunk 0, and its `.tocd`,
-   `.rodata` and `.data` at the start of hunk 2 next to the page table, all
+   `.rodata` and `.data` at the end of hunk 2 next to the page table, all
    within ±32 KB of `_LinkerDB`. Put its `.bss` in hunk 3 and its `.text`
    (PPC, 32 bytes) in hunk 1.
 2. Turn its `HUNK_RELOC32` into output `HUNK_RELOC32` with remapped hunk
@@ -471,7 +482,7 @@ Exit codes: 0 ok, 10 warnings treated as errors (`--Werror`), 20 error.
 | Undefined symbol | error, list all |
 | Weak undefined | value 0, warning |
 | `REL24` out of ±32 MB, or to absolute symbol | error |
-| `ADDR32` at odd offset | error |
+| `ADDR32` at odd offset | allowed (needs a 68020+, see 6.1) |
 | `ADDR16`, `ADDR16_HI`, or LO on `ori`-type instructions, to a relocatable target | error (6.2) |
 | HA on anything but `lis` | error (6.2) |
 | LO whose page has no slot | error (6.2) |
