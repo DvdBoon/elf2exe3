@@ -1,6 +1,6 @@
 # elf2exe3: WarpOS ELF to Amiga Hunk conversion spec
 
-Status: draft 14 (2026-10-17). Companion notes: the Elf2Exe2 review in the project files.
+Status: draft 15 (2026-10-17). Companion notes: the Elf2Exe2 review in the project files.
 
 ## 1. Goal
 
@@ -160,8 +160,11 @@ r_offset`) and `T = (thunk, toff)` the target from section 5.
 | `R_PPC_REL32` (26) | Same hunk: write `toff - poff`. Cross hunk: error. |
 
 Each `HUNK_RELOC32` block: `0x3EC`, then for each target hunk `count, hunk#,
-offsets…`, closed by a `0` longword. Sort offsets ascending. Counts are 32-bit,
-so 125k relocs into one target is fine. Always use `HUNK_RELOC32`, never `HUNK_RELOC32SHORT`: its 16-bit offsets
+offsets…`, closed by a `0` longword. Sort offsets ascending. The count is a longword, but
+`LoadSeg` only uses its low 16 bits (a `dbf` loop), so a list longer than
+65,535 entries is split into several groups for the same target hunk. The
+sample needs this: 67,650 relocs from hunk 2 to hunk 1. Without the split,
+`LoadSeg` fails with "bad loadfile hunk" (found on the Amiga). Always use `HUNK_RELOC32`, never `HUNK_RELOC32SHORT`: its 16-bit offsets
 cannot reach past 64 KB, and the main hunks here are megabytes.
 
 ### 6.2 `ADDR16_HA/LO`: rewrite `lis` into a table load
