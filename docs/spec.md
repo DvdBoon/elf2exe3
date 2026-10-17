@@ -1,6 +1,6 @@
 # elf2exe3: WarpOS ELF to Amiga Hunk conversion spec
 
-Status: draft 16 (2026-10-17). Companion notes: the Elf2Exe2 review in the project files.
+Status: draft 17 (2026-10-17). Companion: `review/elf2exe2-review.md`.
 
 ## 1. Goal
 
@@ -373,7 +373,11 @@ code hunk:
 2. `FindTask(NULL)`. If `pr_CLI` is 0 (Workbench start), `WaitPort` and
    `GetMsg` on `pr_MsgPort` to take the `WBStartup` message. Then pass the
    line `"\n"` with length 1, because `a0`/`d0` are not an argument line on
-   a Workbench start (Elf2Exe2 passes them anyway).
+   a Workbench start (Elf2Exe2 passes them anyway). Also open `NIL:`
+   (`MODE_NEWFILE`, dos.library V36) and make it the input and output with
+   `SelectInput`/`SelectOutput`, so stdio works; the old handles are
+   restored and `NIL:` is closed at exit, before the reply. Elf2Exe2 has no
+   stdio on a Workbench start.
 3. `OpenLibrary("powerpc.library", 14)`. On failure print an error (CLI only)
    and return 20. Elf2Exe2 silently returns 0 here.
 4. Fill `PPCArgs` on the stack and call `RunPPC` (LVO -30). Unlike Elf2Exe2,
@@ -446,13 +450,15 @@ into a string was considered and rejected: quoting is lost when joining
 
 ## 9. Symbols and debug data
 
-- Default: one `HUNK_SYMBOL` (0x3F0) per hunk with all `STB_GLOBAL` and
+- Default: no `HUNK_SYMBOL` (smaller file, and the symbols are only useful
+  to a debugger).
+- `--symbols`: one `HUNK_SYMBOL` (0x3F0) per hunk with all `STB_GLOBAL` and
   `STB_WEAK` `STT_FUNC`/`STT_OBJECT` symbols, value = offset in hunk. Names are
   padded to longwords; length field is the longword count. Names are cut to
   31 longwords (124 characters): `LoadSeg` fails with "bad loadfile hunk"
   on 32 or more (tested on the Amiga). Some C++ names are longer (up to 188).
 - `--all-symbols`: also locals (sample: 87k symbols, ~3.7 MB of names).
-- `--strip`: no `HUNK_SYMBOL`.
+- `--strip`: same as the default, accepted for old scripts.
 - `.stab`/`.stabstr`: dropped. A later version could wrap them in
   `HUNK_DEBUG` (0x3F1).
 
@@ -467,7 +473,7 @@ for each hunk i:
   HUNK_CODE / HUNK_DATA  + size + data
   or HUNK_BSS + size
   HUNK_RELOC32 block     (if any)
-  HUNK_SYMBOL block      (unless --strip)
+  HUNK_SYMBOL block      (with --symbols)
   HUNK_END 0x3F2
 ```
 
@@ -481,7 +487,7 @@ elf2exe3 [options] input.elf output.exe
   --m68k-startup SECT   use this ELF section as the 68k startup (hunk 0)
   --startup FILE        68k startup object for hunk 0 (default wosstart.o; vbcc warpup.o for argc/argv programs)
   --stack N             PPC stack size
-  --strip | --all-symbols
+  --symbols | --all-symbols   keep symbols (default: none)
   -v                    print section map, hunk sizes, reloc counts
 ```
 
