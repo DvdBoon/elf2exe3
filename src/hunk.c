@@ -18,6 +18,9 @@ void hunk_add_sym(Hunk *h, const char *name, uint32_t off)
 }
 
 #define RELOC_GROUP 65535
+/* LoadSeg fails with "bad loadfile hunk" on a symbol name of 32 or more
+ * longwords (tested on the Amiga), so longer names are cut to 31. */
+#define MAX_SYMNAME (31 * 4)
 
 static int put32(FILE *f, uint32_t v)
 {
@@ -29,10 +32,11 @@ static int put32(FILE *f, uint32_t v)
 static int put_name(FILE *f, const char *name, uint32_t type)
 {
     size_t len = strlen(name);
-    uint32_t longs = (uint32_t)((len + 3) / 4);
+    uint32_t longs;
     static const uint8_t zero[4] = {0, 0, 0, 0};
-    if (longs > 0xFFFFFF)
-        longs = 0xFFFFFF;
+    if (len > MAX_SYMNAME)
+        len = MAX_SYMNAME;
+    longs = (uint32_t)((len + 3) / 4);
     if (!put32(f, (type << 24) | longs))
         return 0;
     if (fwrite(name, 1, len, f) != len)
