@@ -763,6 +763,12 @@ static void build_hooks(Conv *c)
             if (d & 0x02000000)
                 d |= 0xFC000000;
             d = f + d - (o + 24);
+            if ((int32_t)d < -0x2000000 || (int32_t)d >= 0x2000000) {
+                error("function at hunk 1 offset 0x%08lx starts with a "
+                      "branch the hook cannot reach (over 32 MB)",
+                      (unsigned long)f);
+                continue;
+            }
             insn = (insn & 0xFC000003) | (d & 0x03FFFFFC);
         } else if (op == 16 && !(insn & 2)) {   /* bc, relative */
             uint32_t d = insn & 0xFFFC;
@@ -778,6 +784,11 @@ static void build_hooks(Conv *c)
             insn = (insn & 0xFFFF0003) | (d & 0xFFFC);
         }
         wr32(p + 24, insn);
+        if (o + 28 - (f + 4) >= 0x2000000) {
+            error("entry hook for hunk 1 offset 0x%08lx is more than 32 MB "
+                  "away; code too large for hooks", (unsigned long)f);
+            continue;
+        }
         wr32(p + 28, 0x48000000UL | ((f + 4 - (o + 28)) & 0x03FFFFFC));
     }
 }
