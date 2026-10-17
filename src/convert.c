@@ -668,18 +668,18 @@ static void load_and_relocate(Conv *c)
     c->h[H_START].type = HUNK_CODE;
     c->h[H_START].data = xcalloc(c->h[H_START].size + 4, 1);
 
+    /* No memory flags: a PPC task can only run from memory the PPC can
+     * see, and the WarpOS loader only picks that for hunks without
+     * MEMF_FAST/MEMF_CHIP (Elf2Exe2 files have no flags either). */
     c->h[H_CODE].type = HUNK_CODE;
-    c->h[H_CODE].memflags = HUNKF_FAST;
     c->h[H_CODE].size = c->code_end + c->nhooks * HOOK_SIZE;
     c->h[H_CODE].data = xcalloc(c->h[H_CODE].size + 4, 1);
 
     c->h[H_DATA].type = HUNK_DATA;
-    c->h[H_DATA].memflags = HUNKF_FAST;
     c->h[H_DATA].size = c->table_off;  /* table added later */
     c->h[H_DATA].data = xcalloc(c->table_off + 4, 1);
 
     c->h[H_BSS].type = HUNK_BSS;
-    c->h[H_BSS].memflags = HUNKF_FAST;
 
     for (i = 1; i < e->nsec; i++) {
         ElfSection *s = &e->sec[i];
