@@ -9,6 +9,8 @@
 ;   r6 (a1) = length of the argument line
 ;   r2 (a4) = _LinkerDB (page table + 0x8000, set by elf2exe3)
 ; and returns the PPC r3 (PP_Regs[0]) as the exit code.
+; On a Workbench start the program gets NIL: as input and output, so
+; stdio works, and an empty argument line ("\n").
 ; Everything lives on the stack, so the program can be made resident.
 
         xref    _LinkerDB
@@ -22,10 +24,15 @@ _LVOReplyMsg     equ -378
 _LVOWaitPort     equ -384
 _LVOCloseLibrary equ -414
 _LVOOpenLibrary  equ -552
+_LVOOpen         equ -30
+_LVOClose        equ -36
 _LVOWrite        equ -48
 _LVOOutput       equ -60
+_LVOSelectInput  equ -294
+_LVOSelectOutput equ -300
 _LVORunPPC       equ -30
 
+MODE_NEWFILE     equ 1006
 pr_MsgPort       equ 92
 pr_CLI           equ 172
 
@@ -42,6 +49,8 @@ start:
         move.l  d0,d2                   ; its length
         moveq   #20,d7                  ; exit code if anything fails
         moveq   #0,d3                   ; WBStartup message
+        moveq   #0,d4                   ; DOSBase (Workbench start only)
+        moveq   #0,d5                   ; NIL: handle
         move.l  4.w,a6
 
         sub.l   a1,a1
@@ -54,6 +63,27 @@ start:
         lea     pr_MsgPort(a3),a0
         jsr     _LVOGetMsg(a6)
         move.l  d0,d3
+
+        lea     dosname(pc),a1          ; NIL: as input and output
+        moveq   #36,d0
+        jsr     _LVOOpenLibrary(a6)
+        move.l  d0,d4
+        beq     .wbargs
+        move.l  d0,a6
+        lea     nilname(pc),a0
+        move.l  a0,d1
+        move.l  #MODE_NEWFILE,d2
+        jsr     _LVOOpen(a6)
+        move.l  d0,d5
+        beq     .wbargs
+        move.l  d5,d1
+        jsr     _LVOSelectInput(a6)
+        move.l  d0,d6                   ; old input
+        move.l  d5,d1
+        jsr     _LVOSelectOutput(a6)
+        move.l  d0,a4                   ; old output
+.wbargs:
+        move.l  4.w,a6
         lea     emptyline(pc),a2        ; no arguments from Workbench
         moveq   #1,d2
 .cli:
@@ -112,6 +142,22 @@ start:
         jsr     _LVOCloseLibrary(a6)
 
 .done:
+        tst.l   d5                      ; restore and close NIL:
+        beq     .nonil
+        move.l  d4,a6
+        move.l  d6,d1
+        jsr     _LVOSelectInput(a6)
+        move.l  a4,d1
+        jsr     _LVOSelectOutput(a6)
+        move.l  d5,d1
+        jsr     _LVOClose(a6)
+.nonil:
+        tst.l   d4
+        beq     .nodos
+        move.l  d4,a1
+        move.l  4.w,a6
+        jsr     _LVOCloseLibrary(a6)
+.nodos:
         tst.l   d3
         beq     .exit
         move.l  4.w,a6
@@ -129,6 +175,7 @@ __ppc_stacksize:
 
 ppcname:   dc.b    "powerpc.library",0
 dosname:   dc.b    "dos.library",0
+nilname:   dc.b    "NIL:",0
 emptyline: dc.b    10,0
 errmsg:    dc.b    "This program needs powerpc.library (WarpOS)",10
 errend:

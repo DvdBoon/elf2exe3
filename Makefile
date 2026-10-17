@@ -22,9 +22,10 @@ startup:
 	python3 tools/bin2c.py startup/wosstart.o src/wosstart.c
 
 check: elf2exe3
-	python3 tests/verify.py ./elf2exe3 $(ELF)
+	./elf2exe3 --map check.map $(ELF) check.exe
+	python3 tests/verify.py $(ELF) check.exe check.map
 
 clean:
-	rm -f elf2exe3 elf2exe3.68k
+	rm -f elf2exe3 elf2exe3.68k check.exe check.map
 
 .PHONY: amiga check clean startup

@@ -19,8 +19,8 @@ static void usage(void)
         "                   wosstart.o; vbcc's warpup.o for argc/argv programs)\n"
         "  --m68k-startup SECTION  use this ELF code section as hunk 0\n"
         "  --stack N        PPC stack size in bytes\n"
-        "  --strip          no symbols\n"
-        "  --all-symbols    local symbols too\n"
+        "  --symbols        keep global symbols (default: none)\n"
+        "  --all-symbols    keep global and local symbols\n"
         "  --map FILE       write the layout map (for tests)\n"
         "  --Werror         treat warnings as errors\n"
         "  -v               print layout and statistics\n");
@@ -35,7 +35,7 @@ int main(int argc, char **argv)
 
     memset(&opt, 0, sizeof(opt));
     opt.hooks = 1;
-    opt.symbols = 1;
+    opt.symbols = 0;
     for (i = 1; i < argc; i++) {
         const char *a = argv[i];
         if (strcmp(a, "--entry") == 0 && i + 1 < argc)
@@ -50,7 +50,9 @@ int main(int argc, char **argv)
             opt.stack = strtoul(argv[++i], NULL, 0);
         else if (strcmp(a, "--no-hooks") == 0)
             opt.hooks = 0;
-        else if (strcmp(a, "--strip") == 0)
+        else if (strcmp(a, "--symbols") == 0)
+            opt.symbols = 1;
+        else if (strcmp(a, "--strip") == 0)   /* the default, kept for scripts */
             opt.symbols = 0;
         else if (strcmp(a, "--all-symbols") == 0)
             opt.symbols = 2;
