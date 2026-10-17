@@ -17,6 +17,8 @@ void hunk_add_sym(Hunk *h, const char *name, uint32_t off)
     h->nsyms++;
 }
 
+#define RELOC_GROUP 65535
+
 static int put32(FILE *f, uint32_t v)
 {
     uint8_t b[4];
@@ -76,10 +78,17 @@ int hunk_write(const char *path, Hunk *h, int nhunks)
                 if (!r->n)
                     continue;
                 u32_sort(r);
-                ok &= put32(f, (uint32_t)r->n);
-                ok &= put32(f, (uint32_t)t);
-                for (k = 0; k < r->n; k++)
-                    ok &= put32(f, r->v[k]);
+                /* LoadSeg only uses the low 16 bits of the count, so
+                 * longer lists are split into groups of at most 65535. */
+                for (k = 0; k < r->n; k += RELOC_GROUP) {
+                    size_t n = r->n - k, m;
+                    if (n > RELOC_GROUP)
+                        n = RELOC_GROUP;
+                    ok &= put32(f, (uint32_t)n);
+                    ok &= put32(f, (uint32_t)t);
+                    for (m = 0; m < n; m++)
+                        ok &= put32(f, r->v[k + m]);
+                }
             }
             ok &= put32(f, 0);
         }

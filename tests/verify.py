@@ -85,6 +85,9 @@ def read_hunks(path):
                     cnt = get()
                     if cnt == 0:
                         break
+                    if cnt > 0xFFFF:
+                        fail("hunk %d: RELOC32 count %d does not fit 16 bits "
+                             "(LoadSeg reads only the low word)" % (i, cnt))
                     tgt = get()
                     for _ in range(cnt):
                         h["reloc"].append((tgt, get()))
