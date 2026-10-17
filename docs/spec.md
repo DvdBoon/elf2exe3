@@ -1,6 +1,6 @@
 # elf2exe3: WarpOS ELF to Amiga Hunk conversion spec
 
-Status: draft 13 (2026-10-17). Companion notes: the Elf2Exe2 review in the project files.
+Status: draft 14 (2026-10-17). Companion notes: the Elf2Exe2 review in the project files.
 
 ## 1. Goal
 
@@ -181,8 +181,12 @@ hunk start). Each distinct `(thunk, pg)` gets one 32-bit slot holding
 slot therefore holds `hunkaddr[thunk] + (pg << 16)`. The table sits at the
 end of hunk 2, 4-byte aligned. The sample needs 353 slots with hooks (374 without), about 1.4 KB.
 
-**Base register.** `r2` points 0x8000 bytes past the table start (so a signed
-16-bit displacement reaches 16,384 slots). More slots than that is an error.
+**Base register.** The end of hunk 2 is the "r2 block": the startup
+object's small data (8.1, empty for `wosstart.o`) followed by the page
+table. `r2` = `_LinkerDB` = block start + 0x8000, so a signed 16-bit
+displacement reaches the whole block (up to 16,384 slots when the startup
+has no data). A slot is loaded with `d = table - _LinkerDB + index * 4`. A
+block over 64 KB is an error.
 `r2` is WarpOS's own small-data/TOC base register (checked in the WarpOS
 source, `D:\powerpclib\warpos`), which makes it the natural choice:
 
@@ -353,21 +357,32 @@ reach `r31`, it holds whatever the kernel leaves there; a check of the WarpOS
 `RunPPC` path for that value is part of on-target testing. The return code is
 `PP_Regs[0]` after `RunPPC`.
 
-Steps (same as Elf2Exe2's stub, disassembled from the `uqm` file Dennis
-supplied; it is byte-identical to the one in `Elf2Exe2`):
+Steps (as Elf2Exe2's stub, disassembled from the `uqm` file Dennis
+supplied; it is byte-identical to the one in `Elf2Exe2`). `wosstart.s` keeps
+all its state on the stack, unlike Elf2Exe2's stub, which writes into its own
+code hunk:
 
 1. Save `SysBase`, `a0` (DOS argument line) and `d0` (its length).
 2. `FindTask(NULL)`. If `pr_CLI` is 0 (Workbench start), `WaitPort` and
-   `GetMsg` on `pr_MsgPort` to take the `WBStartup` message.
+   `GetMsg` on `pr_MsgPort` to take the `WBStartup` message. Then pass the
+   line `"\n"` with length 1, because `a0`/`d0` are not an argument line on
+   a Workbench start (Elf2Exe2 passes them anyway).
 3. `OpenLibrary("powerpc.library", 14)`. On failure print an error (CLI only)
    and return 20. Elf2Exe2 silently returns 0 here.
 4. Fill `PPCArgs` on the stack and call `RunPPC` (LVO -30). Unlike Elf2Exe2,
-   there is no relocation pass: `LoadSeg` has done all of it.
+   there is no relocation pass: `LoadSeg` has done all of it. If `RunPPC`
+   itself fails (not `PPERR_SUCCESS`), return 20.
 5. `CloseLibrary`, reply the `WBStartup` message if any (`Forbid()` +
    `ReplyMsg()`), and return `PP_Regs[0]` in `d0`.
 
 No cache handling is needed: nothing is modified after `LoadSeg` (Dennis).
 The file can be made resident.
+
+`wosstart.o` (444 bytes, 312 bytes of code) is built into the converter as
+`src/wosstart.c`, generated from `startup/wosstart.o`, so the tool needs no
+extra file. It exports `__ppc_stacksize`, a longword that `--stack N` sets
+and the startup copies to `PP_StackSize`. A startup object without that
+symbol (vbcc's `warpup.o`) cannot take `--stack`.
 
 ### 8.1 Linking a startup object; vbcc's `warpup.o`
 
@@ -391,15 +406,16 @@ analysed from Dennis's vbcc install:
   `PP_Regs[0]`.
 
 That last point fits section 6.2 directly: vbcc's startup already sets `r2`
-to `_LinkerDB`, so the converter defines `_LinkerDB` as page table + 0x8000
-and no extra work is needed for the main task.
+to `_LinkerDB`, so the converter defines `_LinkerDB` as the r2 block
+start + 0x8000 (6.2) and no extra work is needed for the main task.
 
 What the converter must do to link it (a small hunk-object linker):
 
-1. Read the object's hunks. Put its 68k code in hunk 0, and its `.tocd`,
-   `.rodata` and `.data` at the end of hunk 2 next to the page table, all
-   within ±32 KB of `_LinkerDB`. Put its `.bss` in hunk 3 and its `.text`
-   (PPC, 32 bytes) in hunk 1.
+1. Read the object's hunks. Put its first section (68k code) in hunk 0, and
+   its data sections (`.tocd`, `.rodata`, `.data`) at the start of the r2
+   block, before the page table, all within ±32 KB of `_LinkerDB`. Put its
+   `.bss` at the end of hunk 3 and any other code (`.text`, PPC, 32 bytes)
+   at the end of the ELF code in hunk 1, before the entry hooks.
 2. Turn its `HUNK_RELOC32` into output `HUNK_RELOC32` with remapped hunk
    numbers and offsets.
 3. Resolve `HUNK_DREL16` at conversion time: write
@@ -407,7 +423,12 @@ What the converter must do to link it (a small hunk-object linker):
 4. Resolve `_LinkerDB` and `__ppc_startup` (`EXT_REF32`) to `HUNK_RELOC32`
    entries. `__ppc_startup` is the ELF symbol of that name, or the ELF entry
    with `--entry`.
-5. Error on any other unresolved reference.
+5. Resolve any other reference against the object's own definitions, then
+   the ELF's global symbols; error if neither has it. `EXT_DEXT16` (a4
+   relative) is resolved like `HUNK_DREL16`.
+6. The ELF's undefined symbols are looked up in the object's definitions
+   too, so a vbcc-built ELF can use `_PowerPCBase`, `_SysBase` and the other
+   `.tocd` variables of `warpup.o`.
 
 Choosing between the two: vbcc's startup passes `argc`/`argv`, Elf2Exe2's
 contract passes the raw line, and the ELF's PPC startup expects one of
