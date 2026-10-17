@@ -15,6 +15,7 @@
 #include "elf.h"
 #include "hobj.h"
 #include "hunk.h"
+#include "repack.h"
 #include "util.h"
 
 #define R_PPC_NONE          0
@@ -715,7 +716,9 @@ static void load_and_relocate(Conv *c)
         free(r);
     }
 
-    for (j = 0; j < c->lo_key.n; j++) {
+    /* --repack: a lone LO16's high half is a guess (repack.c); only its
+     * low 16 bits are known, and those are written correctly anyway. */
+    for (j = 0; j < c->lo_key.n && !c->opt->repack; j++) {
         uint32_t hunk = c->lo_key.v[j] >> 16, page = c->lo_key.v[j] & 0xFFFF;
         if (page >= c->npages[hunk] || c->slot_of[hunk][page] < 0)
             error("ADDR16_LO at hunk 1 offset 0x%08lx: no lis loads its "
@@ -1007,10 +1010,19 @@ static void write_map(Conv *c, const char *path)
 int convert(const char *in, const char *out, const Options *opt)
 {
     Conv *c = xcalloc(1, sizeof(Conv));
+    uint8_t *image = NULL;
     int k, rc;
 
     c->opt = opt;
-    elf_open(&c->e, in);
+    if (opt->repack) {
+        uint32_t len;
+        image = repack_load(in, &len);
+        if (opt->dump_elf)
+            repack_dump(opt->dump_elf, image, len);
+        elf_open_mem(&c->e, image, len, in);
+    } else {
+        elf_open(&c->e, in);
+    }
     if (c->e.symtab < 0)
         fatal("%s: no symbol table", in);
 
@@ -1043,5 +1055,6 @@ int convert(const char *in, const char *out, const Options *opt)
         write_map(c, opt->map);
     rc = hunk_write(out, c->h, NHUNKS);
     elf_close(&c->e);
+    free(image);
     return rc;
 }

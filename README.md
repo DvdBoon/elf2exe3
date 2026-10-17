@@ -21,6 +21,23 @@ all you need:
 
     elf2exe3 ScummVM2_ELF scummvm
 
+### Repacking Elf2Exe2 programs
+
+    elf2exe3 --repack uqm uqm.new
+
+`--repack` takes a program that Elf2Exe2 already wrapped and writes it as a
+normal elf2exe3 executable. Use it when you only have the wrapped program.
+Elf2Exe2 removed the symbols, so elf2exe3 finds the function entries for
+the r2 hooks itself (spec section 15.4).
+
+The input must be an Elf2Exe2 executable; anything else is rejected with
+the reason. Recognition (spec section 15.1):
+- hunk 0 is byte for byte Elf2Exe2's 576-byte 68k startup;
+- hunk 1 is BSS, hunks 2 onward are DATA or BSS, and no hunk has reloc,
+  symbol or debug blocks;
+- the last hunk reads cleanly as Elf2Exe2's relocation table, and every
+  patched instruction is a `lis`, an addi/load/store or a branch.
+
 ### Options
 
 | Option | Meaning |
@@ -28,12 +45,14 @@ all you need:
 | `--symbols` | Keep the global symbols (`HUNK_SYMBOL`), for debuggers. By default no symbols are written. |
 | `--all-symbols` | Keep global and local symbols. Makes the file several MB bigger. |
 | `--strip` | No symbols. This is the default; the option is kept for old scripts. |
+| `--repack` | The input is an Elf2Exe2 executable instead of an ELF. |
 | `--stack N` | PPC stack size in bytes (`PP_StackSize`). Default: the WarpOS default. |
 | `--entry SYMBOL` | PPC entry point. Default: the start of `.text`. |
 | `--startup FILE` | Use this 68k hunk object as the startup instead of the built-in one, e.g. vbcc's `warpup.o` for programs that expect `argc`/`argv`. |
 | `--m68k-startup SECTION` | Use 68k code from this ELF section as the startup. |
 | `--no-hooks` | Leave out the r2 entry hooks. Only for testing: programs with callbacks will crash. |
 | `--map FILE` | Write a layout map (used by the tests). |
+| `--dump-elf FILE` | With `--repack`: also write the rebuilt ELF (used by the tests). |
 | `--Werror` | Treat warnings as errors (exit code 10, no output file). |
 | `-v` | Print the hunk layout and statistics. |
 
@@ -92,6 +111,11 @@ or by hand:
 
     ./elf2exe3 --map out.map input.elf out.exe
     python3 tests/verify.py input.elf out.exe out.map
+
+For `--repack`, test against the rebuilt ELF:
+
+    ./elf2exe3 --repack --dump-elf out.elf --map out.map wrapped out.exe
+    python3 tests/verify.py out.elf out.exe out.map
 
 `verify.py` loads the hunk file the way `LoadSeg` does, at addresses whose
 low 16 bits are not zero, and checks every relocation, rewritten `lis`,

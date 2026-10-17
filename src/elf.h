@@ -62,6 +62,8 @@ typedef struct {
 
 typedef struct {
     FILE *f;
+    const uint8_t *mem;    /* in-memory image instead of f (--repack) */
+    uint32_t memsize;
     const char *path;
     uint16_t type;
     uint32_t entry;
@@ -73,6 +75,10 @@ typedef struct {
 } ElfFile;
 
 void elf_open(ElfFile *e, const char *path);
+/* Same for an image in memory; name is used in messages. The buffer must
+ * stay valid until elf_close. */
+void elf_open_mem(ElfFile *e, const uint8_t *buf, uint32_t size,
+                  const char *name);
 void elf_close(ElfFile *e);
 /* Reads a section's contents into a new buffer (size bytes). */
 uint8_t *elf_read_section(ElfFile *e, uint32_t idx);

@@ -7,7 +7,7 @@ VC      ?= vc
 VCFLAGS ?= +aos68k -c99 -O2
 
 SRC = src/main.c src/convert.c src/elf.c src/hobj.c src/hunk.c src/util.c \
-      src/wosstart.c
+      src/repack.c src/wosstart.c
 
 elf2exe3: $(SRC) src/*.h
 	$(CC) $(CFLAGS) -o $@ $(SRC)

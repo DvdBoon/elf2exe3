@@ -13,6 +13,7 @@ static void usage(void)
     fprintf(stderr,
         "elf2exe3 " VERSION " - WarpOS ELF to Amiga hunk executable\n"
         "usage: elf2exe3 [options] input.elf output.exe\n"
+        "  --repack         input is an Elf2Exe2 executable, not an ELF\n"
         "  --entry SYMBOL   PPC entry point (default: start of .text)\n"
         "  --no-hooks       do not add r2 entry hooks\n"
         "  --startup FILE   68k startup object for hunk 0 (default: built-in\n"
@@ -22,6 +23,7 @@ static void usage(void)
         "  --symbols        keep global symbols (default: none)\n"
         "  --all-symbols    keep global and local symbols\n"
         "  --map FILE       write the layout map (for tests)\n"
+        "  --dump-elf FILE  with --repack: write the rebuilt ELF (for tests)\n"
         "  --Werror         treat warnings as errors\n"
         "  -v               print layout and statistics\n");
     exit(20);
@@ -48,6 +50,10 @@ int main(int argc, char **argv)
             opt.m68k_sect = argv[++i];
         else if (strcmp(a, "--stack") == 0 && i + 1 < argc)
             opt.stack = strtoul(argv[++i], NULL, 0);
+        else if (strcmp(a, "--dump-elf") == 0 && i + 1 < argc)
+            opt.dump_elf = argv[++i];
+        else if (strcmp(a, "--repack") == 0)
+            opt.repack = 1;
         else if (strcmp(a, "--no-hooks") == 0)
             opt.hooks = 0;
         else if (strcmp(a, "--symbols") == 0)

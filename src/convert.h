@@ -10,6 +10,8 @@ typedef struct {
     const char *startup;   /* 68k startup object, NULL = built-in wosstart.o */
     const char *m68k_sect; /* ELF section to use as hunk 0 instead */
     unsigned long stack;   /* PP_StackSize, 0 = WarpOS default */
+    int repack;            /* input is an Elf2Exe2 executable (spec 15) */
+    const char *dump_elf;  /* --repack: also write the rebuilt ELF here */
 } Options;
 
 /* Returns 0 on success; errors are reported through error()/fatal(). */

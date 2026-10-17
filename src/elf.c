@@ -14,6 +14,13 @@ static void read_at(ElfFile *e, uint32_t off, void *buf, uint32_t n)
 {
     if (n == 0)
         return;
+    if (e->mem) {
+        if (off > e->memsize || e->memsize - off < n)
+            fatal("%s: unexpected end of file (offset %lu, %lu bytes)",
+                  e->path, (unsigned long)off, (unsigned long)n);
+        memcpy(buf, e->mem + off, n);
+        return;
+    }
     if (fseek(e->f, (long)off, SEEK_SET) != 0 || fread(buf, 1, n, e->f) != n)
         fatal("%s: unexpected end of file (offset %lu, %lu bytes)", e->path,
               (unsigned long)off, (unsigned long)n);
@@ -36,8 +43,31 @@ static char *dupstr(const char *tab, uint32_t tabsize, uint32_t off)
     return r;
 }
 
+static void parse(ElfFile *e);
+
 void elf_open(ElfFile *e, const char *path)
 {
+    memset(e, 0, sizeof(*e));
+    e->path = path;
+    e->f = fopen(path, "rb");
+    if (!e->f)
+        fatal("cannot open %s", path);
+    parse(e);
+}
+
+void elf_open_mem(ElfFile *e, const uint8_t *buf, uint32_t size,
+                  const char *name)
+{
+    memset(e, 0, sizeof(*e));
+    e->path = name;
+    e->mem = buf;
+    e->memsize = size;
+    parse(e);
+}
+
+static void parse(ElfFile *e)
+{
+    const char *path = e->path;
     uint8_t h[52];
     uint32_t shoff, shentsize, shstrndx, i;
     uint8_t *shdr;
@@ -45,16 +75,14 @@ void elf_open(ElfFile *e, const char *path)
     char *shstr = NULL;
     uint32_t shstrsize = 0;
 
-    memset(e, 0, sizeof(*e));
-    e->path = path;
     e->symtab = -1;
-    e->f = fopen(path, "rb");
-    if (!e->f)
-        fatal("cannot open %s", path);
-
     read_at(e, 0, h, sizeof(h));
-    if (memcmp(h, "\177ELF", 4) != 0)
+    if (memcmp(h, "\177ELF", 4) != 0) {
+        if (rd32(h) == 0x3F3)
+            fatal("%s: is an Amiga hunk executable, not an ELF file (use "
+                  "--repack for files made by Elf2Exe2)", path);
         fatal("%s: not an ELF file", path);
+    }
     if (h[4] != 1)
         fatal("%s: not a 32-bit ELF file", path);
     if (h[5] != 2)
