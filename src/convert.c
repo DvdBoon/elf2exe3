@@ -132,8 +132,7 @@ static long find_u32(const U32Vec *v, uint32_t x)
 
 /* ---- 1. layout ---------------------------------------------------- */
 
-static void place(Conv *c, ElfSection *s, int hunk, uint32_t *end,
-                  int *warned)
+static void place(ElfSection *s, int hunk, uint32_t *end, int *warned)
 {
     uint32_t a = s->align ? s->align : 1;
     if (a > 8 && !*warned) {
@@ -146,7 +145,6 @@ static void place(Conv *c, ElfSection *s, int hunk, uint32_t *end,
     *end = s->base + s->size;
     verbose("  %-20s hunk %d  offset 0x%08lx  size 0x%08lx\n", s->name, hunk,
             (unsigned long)s->base, (unsigned long)s->size);
-    (void)c;
 }
 
 static int entry_section(Conv *c, uint32_t *value)
@@ -211,7 +209,7 @@ static void layout(Conv *c)
             fatal("--m68k-startup section %s holds the PPC entry point",
                   c->opt->m68k_sect);
         end = 0;
-        place(c, &e->sec[c->m68k_sec], H_START, &end, &warned);
+        place(&e->sec[c->m68k_sec], H_START, &end, &warned);
         c->h[H_START].size = end;
     } else {
         if (c->opt->startup)
@@ -227,10 +225,10 @@ static void layout(Conv *c)
 
     /* hunk 1: code, entry section first, then startup object code */
     end = 0;
-    place(c, &e->sec[es], H_CODE, &end, &warned);
+    place(&e->sec[es], H_CODE, &end, &warned);
     for (i = 1; i < e->nsec; i++)
         if ((int)i != es && (int)i != c->m68k_sec && is_code(&e->sec[i]))
-            place(c, &e->sec[i], H_CODE, &end, &warned);
+            place(&e->sec[i], H_CODE, &end, &warned);
     for (k = 1; k < o->nsec; k++)
         if (o->sec[k].type == HUNK_CODE) {
             o->sec[k].hunk = H_CODE;
@@ -245,7 +243,7 @@ static void layout(Conv *c)
     end = 0;
     for (i = 1; i < e->nsec; i++)
         if (is_data(&e->sec[i]))
-            place(c, &e->sec[i], H_DATA, &end, &warned);
+            place(&e->sec[i], H_DATA, &end, &warned);
     c->data_end = align_up(end, 4);
     c->ldb = c->data_end + 0x8000;
     end = c->data_end;
@@ -263,7 +261,7 @@ static void layout(Conv *c)
     end = 0;
     for (i = 1; i < e->nsec; i++)
         if (is_bss(&e->sec[i]))
-            place(c, &e->sec[i], H_BSS, &end, &warned);
+            place(&e->sec[i], H_BSS, &end, &warned);
     for (i = 0; i < e->nsym; i++) {
         ElfSymbol *y = &e->sym[i];
         if (y->shndx == SHN_COMMON) {
