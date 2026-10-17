@@ -154,6 +154,8 @@ def main():
 
     place, common, hooks = {}, {}, {}
     table = None
+    ldb = None
+    orefs = []
     for line in open(map_path):
         f = line.split()
         if f[0] == "section":
@@ -162,9 +164,15 @@ def main():
             common[int(f[1])] = (int(f[2]), int(f[3], 16))
         elif f[0] == "table":
             table = (int(f[1]), int(f[2], 16), int(f[3]))
+        elif f[0] == "linkerdb":
+            ldb = (int(f[1]), int(f[2], 16))
+        elif f[0] == "objref":
+            orefs.append((f[1], int(f[2]), int(f[3], 16)))
+        elif f[0] == "entry":
+            entry = (int(f[1]), int(f[2], 16))
         elif f[0] == "hook":
             hooks[int(f[1], 16)] = int(f[2], 16)
-    r2 = BASES[table[0]] + table[1] + 0x8000
+    r2 = BASES[ldb[0]] + ldb[1]
     hook_abs = {BASES[1] + f: BASES[1] + h for f, h in hooks.items()}
 
     def addr(si, r):
@@ -320,6 +328,27 @@ def main():
         if w[7] >> 26 != 18 or w[7] & 3 or btarget(w[7], h + 28) != f + 4:
             fail("hook 0x%x: does not continue at f+4" % h)
 
+    # startup object references (spec 8)
+    for name, h, off in orefs:
+        v = u32(mem[h], off)
+        hit = [t for t, o in hunks[h]["reloc"] if o == off]
+        if len(hit) != 1:
+            fail("startup reloc at hunk %d+0x%x: %d entries" % (h, off, len(hit)))
+            continue
+        expected_relocs.add((h, hit[0], off))
+        if name == "_LinkerDB":
+            if v != r2:
+                fail("_LinkerDB in hunk %d+0x%x is 0x%08x, not r2 0x%08x"
+                     % (h, off, v, r2))
+        elif name == "__ppc_startup":
+            if v != BASES[entry[0]] + entry[1]:
+                fail("__ppc_startup is 0x%08x, not the entry" % v)
+        elif not BASES[hit[0]] <= v <= BASES[hit[0]] + hunks[hit[0]]["size"]:
+            fail("startup reloc at hunk %d+0x%x points outside its hunk" % (h, off))
+    nchk["startup"] = len(orefs)
+    if hunks[0]["type"] != HUNK_CODE or hunks[0]["size"] == 0:
+        fail("hunk 0 is not a 68k code hunk")
+
     # page table entries
     for k in range(table[2]):
         off = table[1] + 4 * k
@@ -338,9 +367,9 @@ def main():
              % (len(got - expected_relocs), len(expected_relocs - got)))
 
     print("checked: %d ADDR32, %d HA, %d LO (%d paired with their lis), "
-          "%d hooks, %d table slots, %d RELOC32"
+          "%d hooks, %d table slots, %d startup relocs, %d RELOC32"
           % (nchk["addr32"], nchk["ha"], nchk["lo"], nchk["lo_paired"],
-             nchk["hooks"], table[2], nrel))
+             nchk["hooks"], table[2], nchk["startup"], nrel))
     print("hunks:", ", ".join("%d %s %d" % (i, {HUNK_CODE: "CODE",
                               HUNK_DATA: "DATA", HUNK_BSS: "BSS"}[h["type"]],
                               h["size"]) for i, h in enumerate(hunks)))

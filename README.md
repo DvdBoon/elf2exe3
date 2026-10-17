@@ -8,15 +8,15 @@ Written in C99 and built with vbcc.
 
 ## Status
 
-Steps 1 to 3 of the spec are implemented: layout, `HUNK_RELOC32`, the `lis`
-rewrite with the page table, and the r2 entry hooks. Hunk 0 is still a
-placeholder (`moveq #20,d0; rts`) until the 68k startup linker (step 4) is in,
-so the output does not run yet.
+Steps 1 to 4 of the spec are implemented: layout, `HUNK_RELOC32`, the `lis`
+rewrite with the page table, the r2 entry hooks, and the 68k startup in
+hunk 0 (`startup/wosstart.s`, built in). Not yet tested on real hardware.
 
 ## Build
 
     make            # host build, any C99 compiler
     make amiga      # vbcc: vc +aos68k -c99 -O2
+    make startup    # after editing startup/wosstart.s (needs vasm)
 
 ## Test
 

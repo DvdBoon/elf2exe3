@@ -15,6 +15,10 @@ static void usage(void)
         "usage: elf2exe3 [options] input.elf output.exe\n"
         "  --entry SYMBOL   PPC entry point (default: start of .text)\n"
         "  --no-hooks       do not add r2 entry hooks\n"
+        "  --startup FILE   68k startup object for hunk 0 (default: built-in\n"
+        "                   wosstart.o; vbcc's warpup.o for argc/argv programs)\n"
+        "  --m68k-startup SECTION  use this ELF code section as hunk 0\n"
+        "  --stack N        PPC stack size in bytes\n"
         "  --strip          no symbols\n"
         "  --all-symbols    local symbols too\n"
         "  --map FILE       write the layout map (for tests)\n"
@@ -38,6 +42,12 @@ int main(int argc, char **argv)
             opt.entry = argv[++i];
         else if (strcmp(a, "--map") == 0 && i + 1 < argc)
             opt.map = argv[++i];
+        else if (strcmp(a, "--startup") == 0 && i + 1 < argc)
+            opt.startup = argv[++i];
+        else if (strcmp(a, "--m68k-startup") == 0 && i + 1 < argc)
+            opt.m68k_sect = argv[++i];
+        else if (strcmp(a, "--stack") == 0 && i + 1 < argc)
+            opt.stack = strtoul(argv[++i], NULL, 0);
         else if (strcmp(a, "--no-hooks") == 0)
             opt.hooks = 0;
         else if (strcmp(a, "--strip") == 0)

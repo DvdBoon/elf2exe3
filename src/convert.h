@@ -7,6 +7,9 @@ typedef struct {
     int symbols;           /* 0 = strip, 1 = globals, 2 = all */
     const char *entry;     /* entry symbol, NULL = start of .text */
     const char *map;       /* write a layout map here, NULL = none */
+    const char *startup;   /* 68k startup object, NULL = built-in wosstart.o */
+    const char *m68k_sect; /* ELF section to use as hunk 0 instead */
+    unsigned long stack;   /* PP_StackSize, 0 = WarpOS default */
 } Options;
 
 /* Returns 0 on success; errors are reported through error()/fatal(). */
