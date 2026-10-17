@@ -223,7 +223,7 @@ uint8_t *repack_load(const char *path, uint32_t *size)
     WHunk *w;
     Buf b = {0}, st = {0}, sh = {0}, sy = {0};
     uint32_t *shname, *secoff, *relsec, nsec, symtab, strtab, shstrtab;
-    uint32_t nsym, firstfunc, k;
+    uint32_t nsym, k;
     char name[32];
 
     g_path = path;
@@ -526,7 +526,6 @@ uint8_t *repack_load(const char *path, uint32_t *size)
         put(&sy, NULL, 1);
         put16(&sy, (uint16_t)i);
     }
-    firstfunc = n - 1;
     for (i = 2; i < n - 1; i++) {
         size_t r;
         for (r = 0; r < w[i].func.n; r++) {
@@ -542,7 +541,6 @@ uint8_t *repack_load(const char *path, uint32_t *size)
         }
     }
     nsym = sy.n / 16;
-    (void)firstfunc;
 
     /* file: header, section contents, section headers */
     put(&b, NULL, 52);
