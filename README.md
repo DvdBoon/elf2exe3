@@ -8,7 +8,7 @@ Unlike Elf2Exe2, the result does not carry the ELF inside a 68k loader:
 `LoadSeg` does all the relocation, nothing is patched at run time, and
 there is no 32 MB size limit. ScummVM 2.2 (37.9 MB ELF) converts and runs.
 
-The full design is in `docs/spec.md` (on the `docs/conversion-spec` branch).
+The full design is in `docs/spec.md`.
 
 ## Usage
 
