@@ -1,6 +1,6 @@
 # elf2exe3: WarpOS ELF to Amiga Hunk conversion spec
 
-Status: draft 15 (2026-10-17). Companion notes: the Elf2Exe2 review in the project files.
+Status: draft 16 (2026-10-17). Companion notes: the Elf2Exe2 review in the project files.
 
 ## 1. Goal
 
@@ -83,10 +83,10 @@ Default layout ("merged"), in this hunk order:
 
 | # | Hunk type | Contents | Memory flag |
 |---|---|---|---|
-| 0 | `HUNK_CODE` (0x3E9) | 68k startup object, linked in (section 8) | any |
-| 1 | `HUNK_CODE` (0x3E9) | Every `SHF_EXECINSTR` section (PPC or 68k), the section holding the entry point first, in file order (`.text`, `.init`, `.fini`, …) | `HUNKF_FAST` |
-| 2 | `HUNK_DATA` (0x3EA) | Every `SHF_ALLOC` `SHT_PROGBITS` non-exec section in file order (`.rodata`, `.gcc_except_table`, `.ctors`, `.dtors`, `.data`, `.sdata`, …), then the page table (6.2) | `HUNKF_FAST` |
-| 3 | `HUNK_BSS` (0x3EB) | Every `SHT_NOBITS` alloc section (`.sbss`, `.bss`), then COMMON symbols | `HUNKF_FAST` |
+| 0 | `HUNK_CODE` (0x3E9) | 68k startup object, linked in (section 8) | none |
+| 1 | `HUNK_CODE` (0x3E9) | Every `SHF_EXECINSTR` section (PPC or 68k), the section holding the entry point first, in file order (`.text`, `.init`, `.fini`, …) | none |
+| 2 | `HUNK_DATA` (0x3EA) | Every `SHF_ALLOC` `SHT_PROGBITS` non-exec section in file order (`.rodata`, `.gcc_except_table`, `.ctors`, `.dtors`, `.data`, `.sdata`, …), then the page table (6.2) | none |
+| 3 | `HUNK_BSS` (0x3EB) | Every `SHT_NOBITS` alloc section (`.sbss`, `.bss`), then COMMON symbols | none |
 
 Rules:
 
@@ -98,7 +98,11 @@ Rules:
   cross-hunk branch fixup is needed (the 26-bit branch range is ±32 MB, fine for a
   23 MB `.text`).
 - Hunk sizes in `HUNK_HEADER` are in longwords; pad section data with zeros to
-  a multiple of 4. Set bit 31 (`HUNKF_FAST`) on PPC hunks.
+  a multiple of 4. No hunk gets a memory flag: with none, the WarpOS
+  loader picks memory the PPC can run from (`AllocFunc` in Dennis's
+  powerpc.library). An earlier version set `HUNKF_FAST`, and the PPC crashed
+  with an instruction storage exception in `RunPPC`. Elf2Exe2 files have no
+  flags either.
 - Non-alloc sections (`.stab*`, `.comment`, `.gnu.attributes`, string and
   symbol tables, `.rela*` themselves) are not emitted.
 - `HUNK_BSS` must not be the target of anything that needs initial data; it is
@@ -107,7 +111,7 @@ Rules:
   appears in object files, never in executables (confirmed by Dennis). The
   first hunk is always the 68k startup; any later `HUNK_CODE` may hold PPC
   or 68k code. Only hunk types from the standard `dos/doshunks.h` (NDK 45.1)
-  are used, so any `LoadSeg` loads the file. PPC code hunks get `HUNKF_FAST`.
+  are used, so any `LoadSeg` loads the file.
 - `--split` option: one hunk per section instead (useful for debugging). A
   `REL24` that then crosses hunks is an error, since executables have no hunk
   type for it.
@@ -444,7 +448,9 @@ into a string was considered and rejected: quoting is lost when joining
 
 - Default: one `HUNK_SYMBOL` (0x3F0) per hunk with all `STB_GLOBAL` and
   `STB_WEAK` `STT_FUNC`/`STT_OBJECT` symbols, value = offset in hunk. Names are
-  padded to longwords; length field is the longword count.
+  padded to longwords; length field is the longword count. Names are cut to
+  31 longwords (124 characters): `LoadSeg` fails with "bad loadfile hunk"
+  on 32 or more (tested on the Amiga). Some C++ names are longer (up to 188).
 - `--all-symbols`: also locals (sample: 87k symbols, ~3.7 MB of names).
 - `--strip`: no `HUNK_SYMBOL`.
 - `.stab`/`.stabstr`: dropped. A later version could wrap them in
