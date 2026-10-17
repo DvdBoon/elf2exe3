@@ -1,6 +1,6 @@
 # elf2exe3: WarpOS ELF to Amiga Hunk conversion spec
 
-Status: draft 17 (2026-10-17). Companion: `review/elf2exe2-review.md`.
+Status: draft 18 (2026-10-17). Companion: `review/elf2exe2-review.md`.
 
 ## 1. Goal
 
@@ -354,7 +354,7 @@ undefined, so `wosstart.s` follows Elf2Exe2, not `loadelfwos`.
 | `PP_Regs[1]` | d1 | r4 | `PowerPCBase` |
 | `PP_Regs[8]` | a0 | r5 | `WBStartup` message, or 0 from CLI |
 | `PP_Regs[9]` | a1 | r6 | `d0`: argument line length |
-| `PP_Regs[12]` | a4 | r2 | `_LinkerDB` = page table + 0x8000 (`EXT_REF32`, resolved by the converter); Elf2Exe2 leaves it 0 |
+| `PP_Regs[12]` | a4 | r2 | `_LinkerDB` = page table + 0x8000 (`EXT_REF32`, resolved by the converter); Elf2Exe2 never writes it, so r2 starts with leftover 68k stack contents |
 | `PP_Offset`, `PP_Flags`, `PP_Stack`, `PP_StackSize` | | | 0 (`--stack N` sets `PP_StackSize`) |
 
 The PPC register column is WarpOS's non-linear mapping from `ppcmacros.i`
@@ -488,6 +488,8 @@ elf2exe3 [options] input.elf output.exe
   --startup FILE        68k startup object for hunk 0 (default wosstart.o; vbcc warpup.o for argc/argv programs)
   --stack N             PPC stack size
   --symbols | --all-symbols   keep symbols (default: none)
+  --repack              input is an Elf2Exe2 executable (section 15)
+  --dump-elf FILE       with --repack: also write the rebuilt ELF (tests)
   -v                    print section map, hunk sizes, reloc counts
 ```
 
@@ -550,3 +552,95 @@ Exit codes: 0 ok, 10 warnings treated as errors (`--Werror`), 20 error.
 1. Should Hunk symbols be on by default (bigger file) or off?
 2. Are the entry hooks (6.2) acceptable? They cost about 1 MB and a few
    instructions per call through a pointer in ScummVM.
+
+## 15. Repacking Elf2Exe2 executables (`--repack`)
+
+`--repack` takes a program that Elf2Exe2 already wrapped and writes the same
+program as a normal elf2exe3 executable. The wrapped file holds no ELF
+(checked: no `\x7fELF` in `uqm` or `nblood.warpos`). Elf2Exe2 split the
+ELF into hunks and replaced its relocations with a private table, and the
+section names, symbols and ELF headers are gone. So elf2exe3 rebuilds an
+ELF image in memory and passes it through the normal conversion unchanged.
+
+### 15.1 Recognizing an Elf2Exe2 executable
+
+All of these must hold, or elf2exe3 stops with "not an Elf2Exe2
+executable: <reason>" and writes nothing:
+
+1. A hunk executable: `HUNK_HEADER`, no resident library names, first hunk
+   0, last hunk n-1, sizes in the header equal to the hunk sizes, nothing
+   after the last `HUNK_END`.
+2. Every hunk is `HUNK_CODE`, `HUNK_DATA` or `HUNK_BSS` followed directly by
+   `HUNK_END`: no reloc, symbol or debug blocks (Elf2Exe2 writes none).
+3. **Hunk 0 is byte for byte Elf2Exe2's 576-byte 68k startup.** It is
+   identical in Elf2Exe2 itself, `uqm` and `nblood.warpos` and is built into
+   elf2exe3 (`src/repack.c`). This is the main test: nothing else produces
+   this exact code.
+4. Hunk 1 is BSS (the ELF's COMMON symbols), hunk 2 is DATA (the PPC code,
+   `.text`, which the startup runs), hunks 3..n-2 are DATA or BSS, and the
+   last hunk is DATA.
+5. The last hunk parses completely as Elf2Exe2's relocation table: valid
+   hunk numbers, every site inside its hunk, only zero padding after the end
+   marker. Each HA/LO pair must sit on `lis` and an addi/load/store, each
+   HA16 on `lis`, each LO16 on an addi/load/store, each REL24 on a `b`.
+   Otherwise: "relocation table is damaged at byte N".
+
+Without `--repack`, a hunk file given as input is rejected with a hint to
+use `--repack`.
+
+### 15.2 Relocation table
+
+Decoded from the startup's relocation loop and checked by simulating it
+on `uqm` and `nblood.warpos` (every site decodes to base + A):
+
+```
+{ patch_hunk, { count, base_hunk, entry[count] }..., 0 }..., 0
+```
+
+| Entry | Meaning | Rebuilt as |
+|---|---|---|
+| bit31 = 0 | ADDR32 at offset `e`; the long there is A | `R_PPC_ADDR32`, addend A |
+| bits 31,30 = 1,0 | HA/LO pair: `lis` at word `e & 0x3FFFFF`, LO instruction `(e >> 22) & 0xFF` words later; A = lis immediate << 16 \| LO immediate | `R_PPC_ADDR16_HA` + `R_PPC_ADDR16_LO`, addend A |
+| bits 31-29 = 1,1,1 | REL24 at `e & 0x0FFFFFFF`; A = branch field | `R_PPC_REL24`, addend A |
+| bits 31-28 = 1,1,0,1 | lone LO16 at halfword `e & 0x0FFFFFFF` | `R_PPC_ADDR16_LO` (see below) |
+| bits 31-28 = 1,1,0,0 | lone HA16 at halfword `e & 0x0FFFFFFF`, next long = A | `R_PPC_ADDR16_HA`, addend A |
+
+All relocations are against the section symbol of `base_hunk`. A lone LO16
+only stores the low 16 bits of A. Those are all the converter writes, so
+the output is right whatever the high half is. The high half is still
+recovered, from the nearest earlier `lis` with a relocation that loads the
+LO instruction's base register (up to 64 KB back), because it decides
+whether the LO is redirected to an entry hook together with its `lis`. In
+the samples 3154 of 3155 and 3039 of 3040 lone LO16s match. The check that
+a `lis` loads each LO's page (6.2) is skipped with `--repack`.
+
+### 15.3 Rebuilt ELF
+
+One section per hunk 1..n-2: hunk 2 is `.text`, other hunks with
+instruction relocations are `.text.N` (code), the rest `.data.N` or
+`.bss.N`; hunk 1 is `.bss.common`. The relocation table hunk and the
+Elf2Exe2 startup are dropped; elf2exe3's own startup (`wosstart.o`) is
+linked as usual. It uses the same register contract as the Elf2Exe2
+startup (r3 line, r4 PowerPCBase, r5 WB message, r6 length), and the entry
+point is the start of hunk 2 in both.
+
+### 15.4 Function entries for the hooks
+
+The entry hooks (6.2) need to know which pointer targets are function
+starts, and the wrapped file has no symbols. elf2exe3 adds a local
+`STT_FUNC` symbol `fn_<hunk>_<offset>` for every target of an ADDR32, HA/LO
+pair, HA16 or matched LO16 in a code hunk, unless the target:
+
+- is not word aligned or is within 8 bytes of the hunk end,
+- holds an ADDR32 itself (a table, as in 6.2), or
+- looks like data: primary opcode 0 (illegal) or a value 0xFFFFxxxx.
+
+Checked on the ScummVM ELF, where the real symbols are known: this rule
+picks exactly the 27,522 functions the symbol-based rule hooks, with no
+false hits. The 1,775 other targets in `.text` (jump tables that code loads
+with `lis`/`addi`) all look like data. A function start alone is not
+enough (11,549 referenced functions have no `stwu`/`mflr` prologue). On
+the samples: 1,470 entries in `uqm`, 879 in `nblood.warpos`.
+
+The `fn_` symbols are local, so only `--all-symbols` writes them.
+
