@@ -21,7 +21,7 @@ all you need:
 
     elf2exe3 ScummVM2_ELF scummvm
 
-### Repacking Elf2Exe2 programs
+### Repacking Elf2Exe2 programs (experimental)
 
     elf2exe3 --repack uqm uqm.new
 
@@ -29,6 +29,12 @@ all you need:
 normal elf2exe3 executable. Use it when you only have the wrapped program.
 Elf2Exe2 removed the symbols, so elf2exe3 finds the function entries for
 the r2 hooks itself (spec section 15.4).
+
+**Experimental:** the function entries are a guess. It matched the real
+symbols exactly on ScummVM, and repacked uqm and nblood run on the Amiga,
+but a wrong guess in another program would only show up as a crash when a
+callback or thread starts. If a repacked program crashes and the
+Elf2Exe2 version does not, please report it.
 
 The input must be an Elf2Exe2 executable; anything else is rejected with
 the reason. Recognition (spec section 15.1):
@@ -45,7 +51,7 @@ the reason. Recognition (spec section 15.1):
 | `--symbols` | Keep the global symbols (`HUNK_SYMBOL`), for debuggers. By default no symbols are written. |
 | `--all-symbols` | Keep global and local symbols. Makes the file several MB bigger. |
 | `--strip` | No symbols. This is the default; the option is kept for old scripts. |
-| `--repack` | The input is an Elf2Exe2 executable instead of an ELF. |
+| `--repack` | Experimental. The input is an Elf2Exe2 executable instead of an ELF. |
 | `--stack N` | PPC stack size in bytes (`PP_StackSize`). Default: the WarpOS default. |
 | `--entry SYMBOL` | PPC entry point. Default: the start of `.text`. |
 | `--startup FILE` | Use this 68k hunk object as the startup instead of the built-in one, e.g. vbcc's `warpup.o` for programs that expect `argc`/`argv`. |

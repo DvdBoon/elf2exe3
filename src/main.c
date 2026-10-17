@@ -13,7 +13,7 @@ static void usage(void)
     fprintf(stderr,
         "elf2exe3 " VERSION " - WarpOS ELF to Amiga hunk executable\n"
         "usage: elf2exe3 [options] input.elf output.exe\n"
-        "  --repack         input is an Elf2Exe2 executable, not an ELF\n"
+        "  --repack         input is an Elf2Exe2 executable (experimental)\n"
         "  --entry SYMBOL   PPC entry point (default: start of .text)\n"
         "  --no-hooks       do not add r2 entry hooks\n"
         "  --startup FILE   68k startup object for hunk 0 (default: built-in\n"
