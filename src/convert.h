@@ -1,0 +1,20 @@
+/* elf2exe3 - ELF to hunk conversion */
+#ifndef CONVERT_H
+#define CONVERT_H
+
+typedef struct {
+    int hooks;             /* add r2 entry hooks (spec 6.2), default 1 */
+    int symbols;           /* 0 = strip, 1 = globals, 2 = all */
+    const char *entry;     /* entry symbol, NULL = start of .text */
+    const char *map;       /* write a layout map here, NULL = none */
+    const char *startup;   /* 68k startup object, NULL = built-in wosstart.o */
+    const char *m68k_sect; /* ELF section to use as hunk 0 instead */
+    unsigned long stack;   /* PP_StackSize, 0 = WarpOS default */
+    int repack;            /* input is an Elf2Exe2 executable (spec 15) */
+    const char *dump_elf;  /* --repack: also write the rebuilt ELF here */
+} Options;
+
+/* Returns 0 on success; errors are reported through error()/fatal(). */
+int convert(const char *in, const char *out, const Options *opt);
+
+#endif

@@ -1,0 +1,4 @@
+elf2exe3
+elf2exe3.68k
+*.o
+tests/__pycache__/
